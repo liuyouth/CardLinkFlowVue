@@ -1,102 +1,53 @@
 <template>
   <div class="properties-panel" :class="{ show: selectedElement }">
     <div class="panel-header">
-      <span class="panel-title">属性设置</span>
+      <span class="panel-title">
+        <i class="icon" :class="getPanelIcon"></i>
+        {{ getPanelTitle }}
+      </span>
       <button class="close-button" @click="closePanel">×</button>
     </div>
     
     <div class="panel-content">
       <!-- 节点属性 -->
       <div v-if="isNodeSelected" class="property-section node-properties">
-        <h3>节点属性</h3>
+        <div class="section-header">
+          <i class="icon node-icon"></i>
+          <h3>节点属性</h3>
+        </div>
+        
         <div class="property-item">
           <label>节点标识</label>
-          <input
-            type="text"
-            :value="selectedElement.id"
-            class="property-input"
-            readonly
-          >
+          <div class="input-with-copy">
+            <input
+              type="text"
+              :value="selectedElement.id"
+              class="property-input"
+              readonly
+            >
+            <button class="copy-btn" @click="copyToClipboard(selectedElement.id)">
+              复制
+            </button>
+          </div>
         </div>
-        <div class="property-item">
-          <label>标签</label>
-          <input
-            type="text"
-            v-model="nodeLabel"
-            class="property-input"
-            @input="updateNodeProperty('label')"
-          >
-        </div>
-        <div class="property-item">
-          <label>类型</label>
-          <select
-            v-model="nodeType"
-            class="property-input"
-            @change="updateNodeProperty('type')"
-          >
-            <option value="resource">资源</option>
-            <option value="ai-model">AI模型</option>
-            <option value="result">结果</option>
-          </select>
-        </div>
-        <div class="property-item">
-          <label>资源URL</label>
-          <input
-            type="text"
-            v-model="nodeUrl"
-            class="property-input"
-            @input="updateNodeProperty('url')"
-          >
+
+        <div class="node-preview" v-if="nodeType === 'ai-model'">
+          <label>节点预览</label>
+          <div class="preview-box" :class="nodeType">
+            <span class="preview-label">{{ nodeLabel || '未命名节点' }}</span>
+          </div>
         </div>
       </div>
 
       <!-- 连接线属性 -->
       <div v-if="isEdgeSelected" class="property-section edge-properties">
-        <h3>连接线属性</h3>
-        <div class="property-item">
-          <label>连线标识</label>
-          <input
-            type="text"
-            :value="selectedElement.id"
-            class="property-input"
-            readonly
-          >
+        <div class="section-header">
+          <i class="icon edge-icon"></i>
+          <h3>连接线属性</h3>
         </div>
-        <div class="property-item">
-          <label>连线类型</label>
-          <select
-            v-model="edgeType"
-            class="property-input"
-            @change="updateEdgeProperty('type')"
-          >
-            <option value="default">默认连线</option>
-            <option value="resource">资源连线</option>
-            <option value="result">结果连线</option>
-          </select>
-        </div>
-        <div class="property-item">
-          <label>动画速度</label>
-          <input
-            type="range"
-            v-model="edgeSpeed"
-            min="1"
-            max="50"
-            class="property-input"
-            @input="updateEdgeProperty('speed')"
-          >
-          <span class="speed-value">{{ edgeSpeed }}x</span>
-        </div>
-        <div class="property-item">
-          <label>线条样式</label>
-          <select
-            v-model="edgeStyle"
-            class="property-input"
-            @change="updateEdgeProperty('style')"
-          >
-            <option value="solid">实线</option>
-            <option value="dashed">虚线</option>
-            <option value="dotted">点线</option>
-          </select>
+        
+        <div class="edge-preview">
+          <div class="preview-line" :class="[edgeStyle, edgeType]"></div>
         </div>
       </div>
     </div>
@@ -200,6 +151,28 @@ export default {
       emit('update:selectedElement', null)
     }
 
+    // 添加新的计算属性
+    const getPanelTitle = computed(() => {
+      if (props.selectedElement?.type === 'node') {
+        return '节点属性设置'
+      }
+      return '连接线属性设置'
+    })
+
+    const getPanelIcon = computed(() => {
+      return props.selectedElement?.type === 'node' ? 'node-icon' : 'edge-icon'
+    })
+
+    // 添加复制功能
+    const copyToClipboard = async (text) => {
+      try {
+        await navigator.clipboard.writeText(text)
+        // 这里可以添加一个提示消息
+      } catch (err) {
+        console.error('复制失败:', err)
+      }
+    }
+
     return {
       nodeLabel,
       nodeType,
@@ -211,7 +184,10 @@ export default {
       isEdgeSelected,
       updateNodeProperty,
       updateEdgeProperty,
-      closePanel
+      closePanel,
+      getPanelTitle,
+      getPanelIcon,
+      copyToClipboard
     }
   }
 }
@@ -224,7 +200,7 @@ export default {
   top: 0;
   width: 300px;
   height: 100vh;
-  background: #2D2D2D;
+  background: #1E1E1E;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: -2px 0 10px rgba(0, 0, 0, 0.2);
   z-index: 1000;
@@ -326,5 +302,116 @@ export default {
 .property-input[readonly] {
   background: rgba(255, 255, 255, 0.02);
   cursor: not-allowed;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  background-size: contain;
+}
+
+.node-icon {
+  background-image: url('../assets/node-icon.svg');
+}
+
+.edge-icon {
+  background-image: url('../assets/edge-icon.svg');
+}
+
+.input-with-copy {
+  display: flex;
+  gap: 8px;
+}
+
+.copy-btn {
+  padding: 4px 8px;
+  background: rgba(82, 255, 168, 0.1);
+  border: 1px solid rgba(82, 255, 168, 0.2);
+  border-radius: 4px;
+  color: rgba(82, 255, 168, 0.8);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.copy-btn:hover {
+  background: rgba(82, 255, 168, 0.2);
+}
+
+.node-preview {
+  margin-top: 20px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+.preview-box {
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 6px;
+  background: rgba(82, 255, 168, 0.1);
+  border: 1px solid rgba(82, 255, 168, 0.2);
+  text-align: center;
+}
+
+.preview-box.ai-model {
+  background: rgba(64, 156, 255, 0.1);
+  border-color: rgba(64, 156, 255, 0.2);
+}
+
+.edge-preview {
+  margin: 20px 0;
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+}
+
+.preview-line {
+  height: 2px;
+  background: currentColor;
+  position: relative;
+}
+
+.preview-line.dashed {
+  border-top: 2px dashed currentColor;
+  background: none;
+}
+
+.preview-line.dotted {
+  border-top: 2px dotted currentColor;
+  background: none;
+}
+
+/* 添加过渡动画 */
+.property-section {
+  transition: all 0.3s ease;
+}
+
+.property-input {
+  transition: border-color 0.2s ease;
+}
+
+/* 改进滚动条样式 */
+.panel-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-content::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.panel-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.panel-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 </style> 
