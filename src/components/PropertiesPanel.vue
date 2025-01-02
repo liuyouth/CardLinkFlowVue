@@ -5,7 +5,12 @@
         <i class="icon" :class="getPanelIcon"></i>
         {{ getPanelTitle }}
       </span>
-      <button class="close-button" @click="closePanel">×</button>
+      <div class="panel-actions">
+        <button class="action-btn" @click="resetProperties" title="重置属性">
+          <i class="icon reset-icon"></i>
+        </button>
+        <button class="close-button" @click="closePanel">×</button>
+      </div>
     </div>
     
     <div class="panel-content">
@@ -16,25 +21,79 @@
           <h3>节点属性</h3>
         </div>
         
-        <div class="property-item">
-          <label>节点标识</label>
-          <div class="input-with-copy">
-            <input
-              type="text"
-              :value="selectedElement.id"
-              class="property-input"
-              readonly
+        <div class="property-group">
+          <div class="property-item">
+            <label>节点标识</label>
+            <div class="input-with-copy">
+              <input
+                type="text"
+                :value="selectedElement.id"
+                class="property-input"
+                readonly
+              >
+              <button class="copy-btn" @click="copyToClipboard(selectedElement.id)">
+                复制
+              </button>
+            </div>
+          </div>
+
+          <div class="property-item">
+            <label>标签</label>
+            <div class="input-with-validation">
+              <input
+                type="text"
+                v-model="nodeLabel"
+                class="property-input"
+                @input="validateAndUpdateNode('label')"
+                :class="{ 'error': validationErrors.label }"
+              >
+              <span class="validation-error" v-if="validationErrors.label">
+                {{ validationErrors.label }}
+              </span>
+            </div>
+          </div>
+
+          <div class="property-item">
+            <label>类型</label>
+            <select
+              v-model="nodeType"
+              class="property-input select-input"
+              @change="updateNodeProperty('type')"
             >
-            <button class="copy-btn" @click="copyToClipboard(selectedElement.id)">
-              复制
-            </button>
+              <option v-for="type in nodeTypes" 
+                      :key="type.value" 
+                      :value="type.value">
+                {{ type.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="property-item" v-if="showUrlInput">
+            <label>资源URL</label>
+            <div class="input-with-validation">
+              <input
+                type="text"
+                v-model="nodeUrl"
+                class="property-input"
+                @input="validateAndUpdateNode('url')"
+                :class="{ 'error': validationErrors.url }"
+              >
+              <button class="test-btn" @click="testUrl" v-if="nodeUrl">
+                测试链接
+              </button>
+              <span class="validation-error" v-if="validationErrors.url">
+                {{ validationErrors.url }}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div class="node-preview" v-if="nodeType === 'ai-model'">
+        <!-- 节点预览 -->
+        <div class="preview-section">
           <label>节点预览</label>
-          <div class="preview-box" :class="nodeType">
+          <div class="preview-box" :class="[nodeType, { active: isPreviewActive }]">
             <span class="preview-label">{{ nodeLabel || '未命名节点' }}</span>
+            <div class="node-type-indicator" :class="nodeType"></div>
           </div>
         </div>
       </div>
@@ -46,8 +105,50 @@
           <h3>连接线属性</h3>
         </div>
         
-        <div class="edge-preview">
-          <div class="preview-line" :class="[edgeStyle, edgeType]"></div>
+        <div class="property-group">
+          <div class="property-item">
+            <label>连线类型</label>
+            <select
+              v-model="edgeType"
+              class="property-input select-input"
+              @change="updateEdgeProperty('type')"
+            >
+              <option v-for="type in edgeTypes" 
+                      :key="type.value" 
+                      :value="type.value">
+                {{ type.label }}
+              </option>
+            </select>
+          </div>
+
+          <div class="property-item">
+            <label>动画速度 ({{ edgeSpeed }}x)</label>
+            <div class="slider-container">
+              <input
+                type="range"
+                v-model="edgeSpeed"
+                min="1"
+                max="50"
+                class="property-input slider"
+                @input="updateEdgeProperty('speed')"
+              >
+              <div class="slider-values">
+                <span>慢</span>
+                <span>快</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 连线预览 -->
+        <div class="preview-section">
+          <label>连线预览</label>
+          <div class="edge-preview">
+            <div class="preview-line" 
+                 :class="[edgeStyle, edgeType]"
+                 :style="{ animationDuration: `${50/edgeSpeed}s` }">
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -56,6 +157,7 @@
 
 <script>
 import { ref, computed, watch } from 'vue'
+import { useToast } from '@/composables/useToast'
 
 export default {
   name: 'PropertiesPanel',
@@ -68,6 +170,84 @@ export default {
   },
 
   setup(props, { emit }) {
+    const { showToast } = useToast()
+    const validationErrors = ref({})
+    const isPreviewActive = ref(false)
+
+    // 节点类型选项
+    const nodeTypes = [
+      { value: 'resource', label: '资源节点' },
+      { value: 'ai-model', label: 'AI模型' },
+      { value: 'result', label: '结果节点' }
+    ]
+
+    // 连线类型选项
+    const edgeTypes = [
+      { value: 'default', label: '默认连线' },
+      { value: 'resource', label: '资源连线' },
+      { value: 'result', label: '结果连线' }
+    ]
+
+    // 验证函数
+    const validateNodeProperties = (property, value) => {
+      const errors = {}
+      
+      switch (property) {
+        case 'label':
+          if (!value?.trim()) {
+            errors.label = '标签不能为空'
+          }
+          break
+        case 'url':
+          if (value && !isValidUrl(value)) {
+            errors.url = 'URL格式不正确'
+          }
+          break
+      }
+
+      return errors
+    }
+
+    // URL验证
+    const isValidUrl = (url) => {
+      try {
+        new URL(url)
+        return true
+      } catch {
+        return false
+      }
+    }
+
+    // 测试URL连接
+    const testUrl = async () => {
+      try {
+        const response = await fetch(nodeUrl.value)
+        if (response.ok) {
+          showToast('URL可以访问', 'success')
+        } else {
+          showToast('URL无法访问', 'error')
+        }
+      } catch {
+        showToast('URL无法访问', 'error')
+      }
+    }
+
+    // 重置属性
+    const resetProperties = () => {
+      if (window.confirm('确定要重置所有属性吗？')) {
+        if (isNodeSelected.value) {
+          nodeLabel.value = ''
+          nodeType.value = 'resource'
+          nodeUrl.value = ''
+        } else {
+          edgeType.value = 'default'
+          edgeSpeed.value = 1
+          edgeStyle.value = 'solid'
+        }
+        validationErrors.value = {}
+      }
+    }
+
     // 节点属性
     const nodeLabel = ref('')
     const nodeType = ref('')
@@ -187,7 +367,15 @@ export default {
       closePanel,
       getPanelTitle,
       getPanelIcon,
-      copyToClipboard
+      copyToClipboard,
+      nodeTypes,
+      edgeTypes,
+      validationErrors,
+      isPreviewActive,
+      validateNodeProperties,
+      testUrl,
+      resetProperties,
+      showUrlInput: computed(() => nodeType.value === 'resource')
     }
   }
 }
@@ -413,5 +601,114 @@ export default {
 
 .panel-content::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.panel-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.action-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.property-group {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.input-with-validation {
+  position: relative;
+}
+
+.validation-error {
+  color: #ff4d4f;
+  font-size: 12px;
+  margin-top: 4px;
+  display: block;
+}
+
+.property-input.error {
+  border-color: #ff4d4f;
+}
+
+.test-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 4px 8px;
+  background: rgba(82, 255, 168, 0.1);
+  border: none;
+  border-radius: 4px;
+  color: rgba(82, 255, 168, 0.8);
+  cursor: pointer;
+}
+
+.slider-container {
+  position: relative;
+}
+
+.slider-values {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+}
+
+.preview-section {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.node-type-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.node-type-indicator.resource {
+  background: #52ffa8;
+}
+
+.node-type-indicator.ai-model {
+  background: #409cff;
+}
+
+.node-type-indicator.result {
+  background: #ff4d4f;
+}
+
+@keyframes flowAnimation {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 0%; }
+}
+
+.preview-line {
+  background: linear-gradient(90deg, 
+    rgba(255,255,255,0.1) 25%, 
+    rgba(255,255,255,0.3) 50%, 
+    rgba(255,255,255,0.1) 75%
+  );
+  background-size: 200% 100%;
+  animation: flowAnimation 2s linear infinite;
 }
 </style> 
