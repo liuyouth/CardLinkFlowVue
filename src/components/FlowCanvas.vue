@@ -55,13 +55,16 @@
 <script>
 import FlowNode from './FlowNode.vue'
 import FlowEdge from './FlowEdge.vue'
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 
 // 初始节点数据
 const initialNodes = []
 
 // 初始连接线数据
 const initialEdges = []
+
+// 本地存储键名
+const STORAGE_KEY = 'flow-canvas-data'
 
 export default {
   name: 'FlowCanvas',
@@ -345,6 +348,53 @@ export default {
         }
       }
     }
+
+    // 保存数据到localStorage
+    const saveToLocalStorage = () => {
+      const data = {
+        nodes: [...nodes],
+        edges: [...edges]
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+      console.log('数据已保存:', new Date().toLocaleString())
+    }
+
+    // 从localStorage加载数据
+    const loadFromLocalStorage = () => {
+      const savedData = localStorage.getItem(STORAGE_KEY)
+      if (savedData) {
+        try {
+          const { nodes: savedNodes, edges: savedEdges } = JSON.parse(savedData)
+          nodes.splice(0, nodes.length, ...savedNodes)
+          edges.splice(0, edges.length, ...savedEdges)
+          console.log('数据已恢复:', new Date().toLocaleString())
+        } catch (error) {
+          console.error('加载保存的数据时出错:', error)
+        }
+      }
+    }
+
+    // 设置自动保存定时器
+    let autoSaveInterval
+    
+    onMounted(() => {
+      // 加载保存的数据
+      loadFromLocalStorage()
+      
+      // 设置30秒自动保存
+      autoSaveInterval = setInterval(saveToLocalStorage, 30000)
+    })
+
+    // 在组件销毁前保存数据并清除定时器
+    onBeforeUnmount(() => {
+      saveToLocalStorage()
+      clearInterval(autoSaveInterval)
+    })
+
+    // 监听数据变化并保存
+    watch([nodes, edges], () => {
+      saveToLocalStorage()
+    }, { deep: true })
 
     return {
       nodes,
